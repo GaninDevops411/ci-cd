@@ -1,0 +1,290 @@
+name: CI/CD Practice 2
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - feature-*
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  PROJECT_NAME: advanced-app
+  PROJECT_VERSION: "3.1.0"
+  CACHE_VERSION: v1
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare workspace
+        run: |
+          echo "Preparing workspace..."
+          echo "Project: $PROJECT_NAME"
+          echo "Version: $PROJECT_VERSION"
+          mkdir -p workspace
+          echo "workspace-ready" > workspace/status.txt
+
+      - name: Upload workspace artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace
+          path: workspace/
+          retention-days: 1
+
+  cache-demo:
+    runs-on: ubuntu-latest
+    needs: prepare
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            .npm
+            .cache
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-${{ github.ref_name }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.CACHE_VERSION }}-
+            ${{ runner.os }}-
+
+      - name: Simulate installing dependencies
+        run: |
+          echo "Installing dependencies..."
+          mkdir -p node_modules .npm .cache
+          echo "package-1" > node_modules/package-1.txt
+          echo "package-2" > node_modules/package-2.txt
+          echo "package-3" > node_modules/package-3.txt
+          echo "cache-data" > .cache/data.txt
+          ls -la node_modules/
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    needs: cache-demo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            .cache
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-${{ github.ref_name }}
+
+      - name: Build frontend
+        run: |
+          echo "Building frontend component..."
+          mkdir -p build/frontend
+          echo "Frontend v1.0" > build/frontend/index.html
+          echo "const app = 'frontend';" > build/frontend/app.js
+          ls -la build/frontend/
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: build/frontend/
+          retention-days: 1
+
+  build-backend:
+    runs-on: ubuntu-latest
+    needs: cache-demo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            .cache
+          key: ${{ runner.os }}-${{ env.CACHE_VERSION }}-${{ github.ref_name }}
+
+      - name: Build backend
+        run: |
+          echo "Building backend component..."
+          mkdir -p build/backend
+          echo "Backend v1.0" > build/backend/server.js
+          echo "const server = 'backend';" > build/backend/api.js
+          ls -la build/backend/
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-build
+          path: build/backend/
+          retention-days: 1
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs:
+      - build-frontend
+      - build-backend
+
+    steps:
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: build/frontend/
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: build/backend/
+
+      - name: Run unit tests
+        run: |
+          echo "Running unit tests..."
+          test -f build/frontend/index.html && echo "Frontend HTML test PASSED"
+          test -f build/frontend/app.js && echo "Frontend JS test PASSED"
+          test -f build/backend/server.js && echo "Backend server test PASSED"
+          test -f build/backend/api.js && echo "Backend API test PASSED"
+          echo "All unit tests passed"
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs:
+      - build-frontend
+      - build-backend
+    continue-on-error: true
+
+    steps:
+      - name: Run integration tests
+        run: |
+          echo "Running integration tests..."
+          echo "Testing frontend + backend interaction..."
+          echo "All integration tests passed"
+
+  matrix-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+        test-type: [unit, e2e]
+
+    steps:
+      - name: Matrix test
+        run: |
+          echo "Node version: ${{ matrix.node-version }}"
+          echo "Test type: ${{ matrix.test-type }}"
+          echo "Matrix test passed"
+
+  parallel-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    strategy:
+      matrix:
+        batch: [1, 2, 3, 4, 5]
+
+    steps:
+      - name: Parallel test batch
+        run: |
+          echo "Running test batch ${{ matrix.batch }} of 5"
+          sleep 2
+          echo "Test batch ${{ matrix.batch }} completed"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    continue-on-error: true
+
+    steps:
+      - name: Run security scan
+        run: |
+          echo "Running SAST scan..."
+          echo "Scanning dependencies..."
+          echo "Security scan completed"
+
+  package:
+    runs-on: ubuntu-latest
+    needs:
+      - unit-tests
+      - integration-tests
+      - security-scan
+
+    steps:
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: dist/frontend/
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-build
+          path: dist/backend/
+
+      - name: Create package
+        run: |
+          echo "Creating package..."
+          tar -czf advanced-app-${{ github.sha }}.tar.gz dist/
+          ls -la
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-package
+          path: advanced-app-*.tar.gz
+          retention-days: 7
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs:
+      - package
+      - matrix-tests
+      - parallel-tests
+
+    if: github.ref_name == 'develop' || startsWith(github.ref_name, 'feature-')
+
+    environment:
+      name: staging
+      url: https://staging.example.com
+
+    steps:
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging..."
+          echo "Frontend deployed"
+          echo "Backend deployed"
+          echo "Staging deployment complete"
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs:
+      - package
+      - matrix-tests
+      - parallel-tests
+
+    if: github.ref_name == 'main'
+
+    environment:
+      name: production
+      url: https://production.example.com
+
+    steps:
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production..."
+          echo "Production deployment completed"
