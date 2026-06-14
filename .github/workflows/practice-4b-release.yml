@@ -1,0 +1,166 @@
+name: Practice 4B - Advanced Release Strategies
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+env:
+  APP_VERSION: "2.0.0"
+  STABLE_VERSION: "1.0.0"
+
+jobs:
+  build:
+    name: Build Canary Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "Building canary version $APP_VERSION"
+          mkdir -p build
+          echo "version=$APP_VERSION" > build/build.env
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-info
+          path: build/
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - run: |
+          echo "Running tests for version $APP_VERSION"
+          echo "All tests passed"
+
+  canary-10:
+    name: Canary 10% Traffic
+    runs-on: ubuntu-latest
+    needs: test
+    environment:
+      name: production-canary
+      url: https://canary.myapp.example.com
+    steps:
+      - run: |
+          echo "CANARY DEPLOYMENT - 10% TRAFFIC"
+          echo "Stable version: $STABLE_VERSION"
+          echo "Canary version: $APP_VERSION"
+          echo "Stable traffic: 90%"
+          echo "Canary traffic: 10%"
+          echo "Deploying canary..."
+          sleep 3
+          echo "Canary 10% deployed"
+
+  canary-health-check:
+    name: Canary Health Check
+    runs-on: ubuntu-latest
+    needs: canary-10
+    steps:
+      - run: |
+          echo "AUTOMATED CANARY HEALTH CHECK"
+          echo "Error rate delta: OK"
+          echo "Response time delta: OK"
+          echo "Availability: OK"
+          echo "No critical errors"
+          echo "RECOMMENDATION: PROCEED"
+
+  canary-25:
+    name: Canary 25% Traffic
+    runs-on: ubuntu-latest
+    needs: canary-health-check
+    environment:
+      name: production-canary
+      url: https://canary.myapp.example.com
+    steps:
+      - run: |
+          echo "Increasing canary traffic from 10% to 25%"
+          echo "Stable traffic: 75%"
+          echo "Canary traffic: 25%"
+          sleep 3
+          echo "Health checks passed"
+
+  canary-50:
+    name: Canary 50% Traffic
+    runs-on: ubuntu-latest
+    needs: canary-25
+    environment:
+      name: production-canary
+      url: https://canary.myapp.example.com
+    steps:
+      - run: |
+          echo "Increasing canary traffic from 25% to 50%"
+          echo "Stable traffic: 50%"
+          echo "Canary traffic: 50%"
+          sleep 3
+          echo "Health checks passed"
+
+  promote-production:
+    name: Promote Canary to Production
+    runs-on: ubuntu-latest
+    needs: canary-50
+    environment:
+      name: production
+      url: https://www.myapp.example.com
+    steps:
+      - run: |
+          echo "PROMOTING CANARY TO PRODUCTION"
+          echo "Switching 100% traffic to canary"
+          echo "Canary becomes new stable version"
+          echo "Old stable: $STABLE_VERSION"
+          echo "New stable: $APP_VERSION"
+          sleep 4
+          echo "Promotion complete"
+
+  create-release:
+    name: Create Release Tag Info
+    runs-on: ubuntu-latest
+    needs: promote-production
+    steps:
+      - run: |
+          echo "CREATING RELEASE"
+          echo "Release version: v$APP_VERSION"
+          echo "Semantic Versioning: MAJOR.MINOR.PATCH"
+          echo "Generating changelog..."
+          mkdir -p release
+          echo "# Release v$APP_VERSION" > release/CHANGELOG.md
+          echo "- Canary deployment completed" >> release/CHANGELOG.md
+          echo "- Production promoted successfully" >> release/CHANGELOG.md
+          echo "- Rollback point created" >> release/CHANGELOG.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-info
+          path: release/
+
+  rollback-canary:
+    name: Manual Rollback Canary
+    runs-on: ubuntu-latest
+    needs: canary-health-check
+    if: failure()
+    environment:
+      name: production
+      url: https://www.myapp.example.com
+    steps:
+      - run: |
+          echo "AUTOMATIC CANARY ROLLBACK"
+          echo "Reason: health check failed"
+          echo "Routing 100% traffic back to stable"
+          echo "Stable version restored: $STABLE_VERSION"
+
+  manual-rollback:
+    name: Manual Rollback to Previous Version
+    runs-on: ubuntu-latest
+    needs: create-release
+    environment:
+      name: production-rollback
+      url: https://www.myapp.example.com
+    steps:
+      - run: |
+          echo "MANUAL ROLLBACK JOB"
+          echo "Available versions:"
+          echo "v1.0.0"
+          echo "v1.5.0"
+          echo "v2.0.0"
+          echo "Rollback can be triggered manually in real CI/CD"
