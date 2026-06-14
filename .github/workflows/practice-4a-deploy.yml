@@ -1,4 +1,4 @@
-name: Practice 4A - Environments and Deploy
+name: Practice 4b - Environments and Deploy
 
 on:
   push:
